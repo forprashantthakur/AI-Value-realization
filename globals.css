@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --background: 40 14% 98%;
+    --foreground: 222 30% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 12%;
+    --primary: 221 62% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 95%;
+    --secondary-foreground: 222 30% 18%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 9% 42%;
+    --accent: 220 30% 94%;
+    --accent-foreground: 222 40% 20%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 14% 89%;
+    --input: 220 14% 86%;
+    --ring: 221 62% 45%;
+    --radius: 0.5rem;
+    --sidebar: 222 38% 14%;
+    --sidebar-foreground: 220 20% 88%;
+    --sidebar-muted: 220 14% 62%;
+    --sidebar-active: 222 32% 22%;
+
+    /* Value-status semantics: one ordinal blue→green ladder, always shown with a text label. */
+    --vs-forecast: #9ec5f4;
+    --vs-target: #eda100;
+    --vs-actual: #2a78d6;
+    --vs-validated: #1baf7a;
+    --vs-realized: #008300;
+    --vs-sustained: #0d366b;
+
+    /* Chart ink */
+    --chart-grid: #e1e0d9;
+    --chart-axis: #898781;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #008300;
+    --series-7: #4a3aa7;
+    --series-8: #e34948;
+    --good: #0ca30c;
+    --critical: #d03b3b;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-foreground;
+  }
+  .section-title {
+    @apply text-sm font-semibold text-foreground;
+  }
+  .eyebrow {
+    @apply text-[11px] font-medium uppercase tracking-wider text-muted-foreground;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  body {
+    background: white !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-break {
+    break-before: page;
+  }
+  .print-avoid {
+    break-inside: avoid;
+  }
+}
