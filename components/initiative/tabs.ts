@@ -1,0 +1,16 @@
+export const INITIATIVE_TABS = [
+  ["overview", "Overview"],
+  ["business-case", "Business Case"],
+  ["process", "Process"],
+  ["baseline", "Baseline"],
+  ["intervention", "AI Intervention"],
+  ["post-ai", "Post-AI"],
+  ["value", "Value"],
+  ["costs", "Costs"],
+  ["adoption", "Adoption"],
+  ["agents", "Agent Performance"],
+  ["evidence", "Evidence"],
+  ["scenarios", "Scenarios"],
+  ["reports", "Reports"],
+  ["audit", "Audit Trail"],
+] as const;

@@ -1,0 +1,695 @@
+// AI Value Realization Platform — normalized PostgreSQL schema.
+// Money is stored as Decimal(18,2); rates/shares as Decimal(9,6) fractions (0..1).
+
+generator client {
+  provider        = "prisma-client-js"
+  // Rust-free client (query compiler + pg driver adapter): no native query-engine binary needed.
+  previewFeatures = ["queryCompiler", "driverAdapters"]
+  engineType      = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum LifecycleStage {
+  DISCOVER
+  BASELINE
+  BUSINESS_CASE
+  IMPLEMENT
+  MEASURE
+  VALIDATE
+  REALIZE
+  OPTIMIZE
+}
+
+enum Health {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+}
+
+enum AutomationMode {
+  MANUAL
+  RULES_BASED
+  RPA
+  AI_ASSISTED
+  AI_AUTOMATED
+  AGENT_EXECUTED
+  HUMAN_IN_THE_LOOP
+  HUMAN_APPROVED
+}
+
+enum ProcessLevel {
+  PROCESS
+  SUBPROCESS
+  ACTIVITY
+  TASK
+}
+
+enum ValueCategory {
+  PRODUCTIVITY
+  FINANCIAL
+  QUALITY
+  EXPERIENCE
+  RISK_COMPLIANCE
+  STRATEGIC
+}
+
+enum BenefitNature {
+  MEASURED
+  ESTIMATED
+  INTANGIBLE
+}
+
+enum FinancialClass {
+  CASHABLE
+  COST_AVOIDANCE
+  REVENUE
+  WORKING_CAPITAL
+  RISK_AVOIDANCE
+  CAPACITY
+  NON_FINANCIAL
+}
+
+enum BenefitStatus {
+  PROPOSED
+  MEASURED
+  BUSINESS_VALIDATED
+  FINANCE_VALIDATED
+  REALIZED
+  SUSTAINED
+}
+
+enum Confidence {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum EvidenceType {
+  SYSTEM_TELEMETRY
+  PROCESS_MINING
+  FINANCE_VALIDATED
+  BUSINESS_OWNER_VALIDATED
+  SURVEY
+  ESTIMATED
+  BENCHMARK
+}
+
+enum CostCategory {
+  IMPLEMENTATION
+  TECHNOLOGY
+  OPERATING
+}
+
+enum CostRecurrence {
+  ONE_TIME
+  RECURRING
+}
+
+enum SnapshotKind {
+  BASELINE
+  TARGET
+  ACTUAL
+}
+
+enum MeasurementPhase {
+  BASELINE
+  PILOT
+  ROLLOUT
+  STEADY_STATE
+}
+
+enum LeakageCause {
+  LOW_ADOPTION
+  LOWER_AUTOMATION
+  HIGHER_AI_COST
+  EXCEPTION_RATES
+  HUMAN_REVIEW
+  INTEGRATION_LIMITATIONS
+  DATA_QUALITY
+  PROCESS_VARIANCE
+  MODEL_PERFORMANCE
+  CHANGE_RESISTANCE
+}
+
+enum ScenarioName {
+  CONSERVATIVE
+  EXPECTED
+  AGGRESSIVE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum LaborBasis {
+  ACTIVITY
+  FTE_CALIBRATED
+}
+
+enum AgentStatus {
+  LIVE
+  PILOT
+  PLANNED
+}
+
+enum DerivedDriver {
+  LABOR_CASHABLE
+  LABOR_COST_AVOIDANCE
+  LABOR_REDEPLOYED
+  LABOR_REVENUE_CAPACITY
+  QUALITY_COST
+  OUTSOURCING
+  LEGACY_TECH
+}
+
+enum MeasurementFrequency {
+  REALTIME
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+  ONE_OFF
+}
+
+enum KpiDirection {
+  LOWER_IS_BETTER
+  HIGHER_IS_BETTER
+}
+
+// ---------------------------------------------------------------------------
+// Organization structure & reference data
+// ---------------------------------------------------------------------------
+
+model Industry {
+  id                String           @id
+  name              String           @unique
+  description       String
+  isCustom          Boolean          @default(false)
+  suggestedUseCases IndustryUseCase[]
+  focusKpis         String[]
+  organizations     Organization[]
+  benchmarks        Benchmark[]
+  createdAt         DateTime         @default(now())
+}
+
+model IndustryUseCase {
+  id         String   @id @default(cuid())
+  industryId String
+  industry   Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+  name       String
+  sortOrder  Int      @default(0)
+
+  @@index([industryId])
+}
+
+model Organization {
+  id            String               @id
+  name          String
+  industryId    String
+  industry      Industry             @relation(fields: [industryId], references: [id])
+  headquarters  String
+  currency      String               @default("INR")
+  isFictional   Boolean              @default(false)
+  businessUnits BusinessUnit[]
+  initiatives   Initiative[]
+  maturity      MaturityAssessment[]
+  users         User[]
+  createdAt     DateTime             @default(now())
+}
+
+model BusinessUnit {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  country        String
+  initiatives    Initiative[]
+
+  @@index([organizationId])
+}
+
+model FunctionDomain {
+  id          String          @id
+  name        String          @unique
+  description String
+  isActive    Boolean         @default(true)
+  processes   Process[]
+  kpis        KpiDefinition[]
+  initiatives Initiative[]
+  benchmarks  Benchmark[]
+}
+
+/// Self-referencing hierarchy: PROCESS › SUBPROCESS › ACTIVITY › TASK
+model Process {
+  id             String         @id
+  functionId     String
+  function       FunctionDomain @relation(fields: [functionId], references: [id])
+  parentId       String?
+  parent         Process?       @relation("ProcessTree", fields: [parentId], references: [id])
+  children       Process[]      @relation("ProcessTree")
+  level          ProcessLevel
+  name           String
+  description    String?
+  automationMode AutomationMode @default(MANUAL)
+  initiatives    Initiative[]
+
+  @@index([functionId])
+  @@index([parentId])
+}
+
+model KpiDefinition {
+  id          String          @id
+  functionId  String?
+  function    FunctionDomain? @relation(fields: [functionId], references: [id])
+  name        String
+  unit        String
+  direction   KpiDirection
+  description String
+  values      KpiValue[]
+}
+
+// ---------------------------------------------------------------------------
+// AI initiatives
+// ---------------------------------------------------------------------------
+
+model Initiative {
+  id                    String                @id
+  code                  String                @unique
+  name                  String
+  description           String
+  organizationId        String
+  organization          Organization          @relation(fields: [organizationId], references: [id])
+  businessUnitId        String
+  businessUnit          BusinessUnit          @relation(fields: [businessUnitId], references: [id])
+  functionId            String
+  function              FunctionDomain        @relation(fields: [functionId], references: [id])
+  processId             String
+  process               Process               @relation(fields: [processId], references: [id])
+  country               String
+  stage                 LifecycleStage
+  health                Health
+  aiTechnology          String
+  useCase               String
+  owner                 String
+  productOwner          String
+  financeValidator      String
+  complexity            Int
+  strategicAlignment    Int
+  riskLevel             RiskLevel
+  startDate             DateTime
+  goLiveDate            DateTime?
+  productiveHoursPerFte Decimal               @db.Decimal(9, 2)
+  costPerError          Decimal               @db.Decimal(18, 2)
+  laborBasis            LaborBasis            @default(FTE_CALIBRATED)
+  tags                  String[]
+  businessCase          BusinessCase?
+  snapshots             MetricSnapshot[]
+  kpiValues             KpiValue[]
+  measurements          Measurement[]
+  agents                AiAgent[]
+  costs                 CostItem[]
+  disposition           CapacityDisposition?
+  benefits              Benefit[]
+  assumptions           Assumption[]
+  scenarios             Scenario[]
+  leakageNotes          LeakageNote[]
+  reports               Report[]
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([organizationId])
+  @@index([functionId])
+  @@index([stage])
+}
+
+model BusinessCase {
+  id                       String     @id @default(cuid())
+  initiativeId             String     @unique
+  initiative               Initiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  approvedDate             DateTime?
+  approvedBy               String?
+  sponsor                  String
+  problemStatement         String
+  objectives               String[]
+  potentialAdoption        Decimal    @db.Decimal(9, 6)
+  plannedAdoption          Decimal    @db.Decimal(9, 6)
+  horizonYears             Int
+  approvedDeclaredBenefits Decimal    @db.Decimal(18, 2)
+  approvedInvestment       Decimal    @db.Decimal(18, 2)
+}
+
+/// Same KPI set captured for BASELINE, TARGET and ACTUAL (post-AI).
+model MetricSnapshot {
+  id                    String       @id @default(cuid())
+  initiativeId          String
+  initiative            Initiative   @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  kind                  SnapshotKind
+  asOf                  DateTime
+  source                String
+  owner                 String
+  transactionsPerYear   Decimal      @db.Decimal(18, 2)
+  peakMonthlyVolume     Decimal?     @db.Decimal(18, 2)
+  users                 Int?
+  fte                   Decimal      @db.Decimal(12, 2)
+  avgHandlingMinutes    Decimal      @db.Decimal(12, 4)
+  waitingMinutes        Decimal?     @db.Decimal(12, 4)
+  cycleTimeHours        Decimal      @db.Decimal(12, 4)
+  reworkMinutes         Decimal      @db.Decimal(12, 4)
+  fullyLoadedFteCost    Decimal      @db.Decimal(18, 2)
+  technologyCostAnnual  Decimal      @db.Decimal(18, 2)
+  outsourcingCostAnnual Decimal      @db.Decimal(18, 2)
+  errorRate             Decimal      @db.Decimal(9, 6)
+  reworkRate            Decimal      @db.Decimal(9, 6)
+  exceptionRate         Decimal      @db.Decimal(9, 6)
+  firstTimeRight        Decimal      @db.Decimal(9, 6)
+  slaAchievement        Decimal      @db.Decimal(9, 6)
+  csat                  Decimal?     @db.Decimal(9, 4)
+  employeeSatisfaction  Decimal?     @db.Decimal(9, 4)
+  selfServiceRate       Decimal?     @db.Decimal(9, 6)
+  automationRate        Decimal      @db.Decimal(9, 6)
+  adoptionRate          Decimal      @db.Decimal(9, 6)
+
+  @@unique([initiativeId, kind])
+}
+
+model KpiValue {
+  id           String        @id @default(cuid())
+  initiativeId String
+  initiative   Initiative    @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  kpiId        String
+  kpi          KpiDefinition @relation(fields: [kpiId], references: [id])
+  baseline     Decimal       @db.Decimal(18, 4)
+  target       Decimal       @db.Decimal(18, 4)
+  actual       Decimal?      @db.Decimal(18, 4)
+
+  @@unique([initiativeId, kpiId])
+}
+
+/// Monthly time series. Benefits are computed by the value engine — never stored.
+model Measurement {
+  id                 String           @id @default(cuid())
+  initiativeId       String
+  initiative         Initiative       @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  month              String // YYYY-MM
+  phase              MeasurementPhase
+  volume             Decimal          @db.Decimal(18, 2)
+  adoptionRate       Decimal          @db.Decimal(9, 6)
+  automationRate     Decimal          @db.Decimal(9, 6)
+  avgHandlingMinutes Decimal          @db.Decimal(12, 4)
+  cycleTimeHours     Decimal          @db.Decimal(12, 4)
+  errorRate          Decimal          @db.Decimal(9, 6)
+  reworkRate         Decimal          @db.Decimal(9, 6)
+  aiRunCost          Decimal          @db.Decimal(18, 2)
+  activeUsers        Int
+  eligibleUsers      Int
+
+  @@unique([initiativeId, month])
+}
+
+model ModelPrice {
+  id               String    @id
+  name             String
+  tier             String
+  inputPer1M       Decimal   @db.Decimal(18, 6)
+  outputPer1M      Decimal   @db.Decimal(18, 6)
+  cachedInputPer1M Decimal   @db.Decimal(18, 6)
+  currency         String
+  isIllustrative   Boolean   @default(true)
+  notes            String
+  agents           AiAgent[]
+}
+
+model AiAgent {
+  id                String            @id
+  initiativeId      String
+  initiative        Initiative        @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  name              String
+  description       String
+  sequence          Int
+  technology        String
+  modelPriceId      String?
+  modelPrice        ModelPrice?       @relation(fields: [modelPriceId], references: [id])
+  humanInLoopModel  AutomationMode
+  automationPct     Decimal           @db.Decimal(9, 6)
+  deploymentDate    DateTime
+  status            AgentStatus
+  tasks             AgentTask[]
+  performance       AgentPerformance?
+
+  @@index([initiativeId])
+}
+
+model AgentTask {
+  id        String  @id @default(cuid())
+  agentId   String
+  agent     AiAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  name      String
+  automated Boolean // true = automated, false = augmented
+}
+
+model AgentPerformance {
+  id                          String   @id @default(cuid())
+  agentId                     String   @unique
+  agent                       AiAgent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  asOf                        DateTime @default(now())
+  tasksPerMonth               Decimal  @db.Decimal(18, 2)
+  taskCompletionRate          Decimal  @db.Decimal(9, 6)
+  autonomousCompletionRate    Decimal  @db.Decimal(9, 6)
+  escalationRate              Decimal  @db.Decimal(9, 6)
+  overrideRate                Decimal  @db.Decimal(9, 6)
+  errorRate                   Decimal  @db.Decimal(9, 6)
+  hallucinationEventsPerMonth Int
+  toolCallSuccessRate         Decimal  @db.Decimal(9, 6)
+  avgLatencySeconds           Decimal  @db.Decimal(9, 2)
+  callsPerTask                Decimal  @db.Decimal(9, 2)
+  inputTokensPerCall          Int
+  outputTokensPerCall         Int
+  cacheHitRate                Decimal  @db.Decimal(9, 6)
+  toolCallsPerTask            Decimal  @db.Decimal(9, 2)
+  humanMinutesPerEscalation   Decimal  @db.Decimal(9, 2)
+}
+
+model CostItem {
+  id           String         @id
+  initiativeId String
+  initiative   Initiative     @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  category     CostCategory
+  subcategory  String
+  recurrence   CostRecurrence
+  amount       Decimal        @db.Decimal(18, 2)
+  description  String?
+
+  @@index([initiativeId])
+}
+
+model CapacityDisposition {
+  id               String     @id @default(cuid())
+  initiativeId     String     @unique
+  initiative       Initiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  cashable         Decimal    @db.Decimal(9, 6)
+  costAvoidance    Decimal    @db.Decimal(9, 6)
+  redeployed       Decimal    @db.Decimal(9, 6)
+  revenueProducing Decimal    @db.Decimal(9, 6)
+  unallocated      Decimal    @db.Decimal(9, 6)
+  rationale        String
+}
+
+model Benefit {
+  id                   String               @id
+  initiativeId         String
+  initiative           Initiative           @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  name                 String
+  category             ValueCategory
+  financialClass       FinancialClass
+  nature               BenefitNature
+  derivedDriver        DerivedDriver? // set for DERIVED lines
+  declaredAnnualValue  Decimal?             @db.Decimal(18, 2) // set for DECLARED lines
+  declaredBasis        String?
+  attributionPct       Decimal              @db.Decimal(9, 6)
+  confidence           Confidence
+  status               BenefitStatus
+  owner                String
+  measurementFrequency MeasurementFrequency
+  notes                String?
+  evidence             Evidence[]
+  validations          BenefitValidation[]
+
+  @@index([initiativeId])
+  @@index([status])
+}
+
+model Evidence {
+  id          String       @id
+  benefitId   String
+  benefit     Benefit      @relation(fields: [benefitId], references: [id], onDelete: Cascade)
+  type        EvidenceType
+  description String
+  reference   String
+  providedBy  String
+  date        DateTime
+  sampleSize  Int?
+}
+
+/// Governance history: every status transition with who/role/when/why.
+model BenefitValidation {
+  id        String        @id
+  benefitId String
+  benefit   Benefit       @relation(fields: [benefitId], references: [id], onDelete: Cascade)
+  from      BenefitStatus
+  to        BenefitStatus
+  by        String
+  role      String
+  date      DateTime
+  comment   String
+}
+
+model Assumption {
+  id           String     @id
+  initiativeId String
+  initiative   Initiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  label        String
+  value        String
+  rationale    String
+  owner        String
+}
+
+model Scenario {
+  id           String       @id
+  initiativeId String
+  initiative   Initiative   @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  name         ScenarioName
+  overrides    Json
+  notes        String
+
+  @@unique([initiativeId, name])
+}
+
+model LeakageNote {
+  id                    String       @id
+  initiativeId          String
+  initiative            Initiative   @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  cause                 LeakageCause
+  description           String
+  estimatedAnnualImpact Decimal?     @db.Decimal(18, 2)
+  owner                 String
+}
+
+// ---------------------------------------------------------------------------
+// Benchmarks, maturity
+// ---------------------------------------------------------------------------
+
+model Benchmark {
+  id             String         @id
+  industryId     String?
+  industry       Industry?      @relation(fields: [industryId], references: [id])
+  functionId     String
+  function       FunctionDomain @relation(fields: [functionId], references: [id])
+  metric         String
+  label          String
+  unit           String
+  median         Decimal        @db.Decimal(18, 6)
+  topQuartile    Decimal        @db.Decimal(18, 6)
+  source         String
+  isIllustrative Boolean        @default(true)
+  uploadedBy     String?
+}
+
+model MaturityAssessment {
+  id             String          @id @default(cuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assessedOn     DateTime
+  assessedBy     String
+  scores         MaturityScore[]
+}
+
+model MaturityScore {
+  id           String             @id @default(cuid())
+  assessmentId String
+  assessment   MaturityAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  dimension    String
+  score        Int
+  target       Int
+}
+
+// ---------------------------------------------------------------------------
+// Security, governance, audit, reporting, settings
+// ---------------------------------------------------------------------------
+
+model Role {
+  id          String   @id // ENTERPRISE_ADMIN, AI_VALUE_OFFICE, ...
+  name        String
+  permissions String[]
+  users       User[]
+}
+
+model User {
+  id             String        @id
+  name           String
+  email          String        @unique
+  title          String
+  roleId         String
+  role           Role          @relation(fields: [roleId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  auditEntries   AuditLog[]
+}
+
+model GovernanceStep {
+  id               String        @id @default(cuid())
+  from             BenefitStatus
+  to               BenefitStatus
+  allowedRoles     String[]
+  label            String
+  requiresEvidence Boolean
+  sortOrder        Int
+
+  @@unique([from, to])
+}
+
+model AuditLog {
+  id           String   @id
+  at           DateTime @default(now())
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  userName     String
+  entity       String
+  entityId     String
+  initiativeId String?
+  field        String
+  previous     String?
+  next         String?
+  reason       String?
+
+  @@index([initiativeId])
+  @@index([entity, entityId])
+  @@index([at])
+}
+
+model Report {
+  id           String      @id @default(cuid())
+  type         String // EXECUTIVE | PROCESS | CFO | PORTFOLIO
+  title        String
+  initiativeId String?
+  initiative   Initiative? @relation(fields: [initiativeId], references: [id])
+  generatedBy  String
+  generatedAt  DateTime    @default(now())
+  filters      Json
+  format       String // PRINT | PDF | XLSX | CSV
+}
+
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
